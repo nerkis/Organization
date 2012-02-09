@@ -5,42 +5,52 @@ saveAC,	0
 	page
 / main program for pong game. bounces one bit of AC back and forth as
 / long as player presses a key at the right time 
-main,	jms serve	/ call serve subroutine
+main,	jms serve	
 serveR, cla cll
-	tad startRgt
-loop1,	jms wait	/ call wait subroutine
-	cll ral		/ clear L and rotate left 1
-	snl		/ if L is set, done moving left
-	jmp loop1
-	ksf		/ keyboard flag set?
-	jms bell	/ no, ring bell
-	ksf		/ check again
-	jms serve	/ no flag, other player serve
 	kcc
-serveL,	cla cll
-	tad startLft
-loop2,	jms wait	/ call wait subroutine
-	cll rar		/ clear L and rotate right 1
-	snl		/ if L is set, done moving right
-	jmp loop2
-	ksf		/ keyboard flag set?
-	jms bell	/ no, ring bell
-	ksf		/ check again
-	jmp main	/ no flag, other player serve
+	tad startRt	/ put 0002 in AC to start on right
+loop1,	jms wait	
+	cll ral		
+	szl
+	jmp LSet1	/ L set, skip zero-L handling instructions
+	ksf
+	jmp loop1	/ keep moving left
+	jms bell	/ keyboard flag set early, ring bell
 	kcc
-	jmp serveR
+	jmp serveL	/ bell rang, jump to other player's serve
+LSet1,  ksf		
+	jms bell	/ L set but no keyboard flag, ring bell
+serveL,	ksf
+	jms serve	/ bell rang, other player's serve
+	cla cll
+	kcc
+	tad startLt	/ put 2000 in AC to start on left
+loop2,	jms wait	
+	cll rar	
+	szl
+	jmp LSet2	/ L set, skip zero-L handling instructions
+	ksf
+	jmp loop2	/ keep moving right
+	jms bell	/ keyboard flag set early, ring bell
+	jmp main	/ bell rang, other player's serve
+LSet2,	ksf		
+	jms bell	/ L set but no keyboard flag, ring bell
+	ksf		
+	jmp main	/ bell rang, jump to other player's serve
+	kcc
+	jmp serveR	/ no miss, rotate the other way
 	
-startRgt, 0002	
-startLft, 2000
+startRt,0002	
+startLt,2000
 
 	page
 / wait for an 'S' to be typed on the teletype
 serve,	0
 loop,	jms rdchar
-	tad (-"S)	/ is character an S?
+	tad (-"S	/ is character an S?
 	sza cla		
 	jmp loop	/ no S, check again
-	jmp i serve	/ return from subroutine
+	jmp i serve	
 
 / read next character to AC
 rdchar,	0
@@ -62,14 +72,14 @@ bell,	0
 	tls		/ set printer flag so we know it's ready
 	cla		
 	tad (207)	/ set acc to bell sound
-	jms wrchar	/ print bell sound
+	jms wrchar	
 	jmp i bell
 
 	page
 / wait for a period of time determined by the low 6 bits of the switch
 / register, while displaying the caller's contents of A in the console
 / lights
-wait,	0		/ return address placed here by JMS
+wait,	0		
 	dca saveAC	/ save AC so we can use it
 	osr		/ read switch register into AC
 	and (0077	/ mask off high six bits
@@ -82,6 +92,6 @@ wait1,	isz loCount	/ inner loop, 4096 iterations
 	jmp wait1
 	jmp i wait
 
-loCount, 0		/ low 12 bits of counter
-hiCount, 0		/ high 12 bits of counter	
+loCount,0		/ low 12 bits of counter
+hiCount,0		/ high 12 bits of counter	
 
