@@ -1,0 +1,72 @@
+/ *******************
+/ *                 *
+/ *  Bignum Divide  *
+/ *                 *
+/ *******************
+	page
+
+/ Divide 2*bigWords dividend by bigWords divisor. Quotient placed in low bigWords
+/ of dividend, remainder in high bigWords of dividend. Dividend and divisor
+/ cannot overlap. Currently unsigned, but intended to be signed at some point.
+/ Skip if no overflow. If there is an overflow, dividend is unchanged.
+
+/	jms bigdiv
+/	-> -> dividend		/ 2*bigWords
+/	-> -> divisor
+/	skip if no overflow
+
+bigdiv:	0
+	jms	fetchArgs; 2; bigdiv; quo
+
+	tad	quo		/ remainder is high part of dividend
+	tad	(bigWords
+	dca	rem
+
+	sta1			/ allocate a temp bigword
+	jms	bigpush
+	dca	divtmp
+	tad	divtmp		/ get pointer to MSW of temp for checking
+	tad	(bigWords-1	/ sign bit
+	dca	divsign
+
+/ Check for oveflow
+	jms	bigsub; rem; dv; divtmp
+	nop
+	tad i	divsign
+	sma cla
+	jmp	divovf
+
+/ No overflow, iterate over each bit
+	tad	(-bigWords^12d
+	dca	divbits
+
+/ divide loop
+div1,	jms	bigadd2; quo; quo; quo	/ shift dividend left 1
+	nop
+
+	jms	bigsub; rem; dv; divtmp	/ subtract divisor from high bignum
+	nop
+
+	tad i	divsign		/ check sign of result
+	spa cla
+	jmp	div2
+
+	isz i	quo		/ +, set LSB of quotient
+
+	jms	bigcopy; divtmp; rem	/ and update high bignum
+
+div2,	isz	divbits		/ loop control
+	jmp	div1
+
+	isz	bigdiv		/ no overflow, skip return
+
+divovf,	sta1			/ pop temp
+	jms	bigpop
+	jmp i	bigdiv
+
+quo,	0	/ -> quotient and dividend
+dv,	0	/ -> divisor
+rem,	0	/ -> remainder, which is high bignum of dividend
+divtmp,	0	/ -> temp bignum on stack
+divsign,0	/ -> MSW of divtmp
+divbits,0	/ loop counter

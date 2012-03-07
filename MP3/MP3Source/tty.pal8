@@ -1,0 +1,113 @@
+/ Polled Teletype (TTY) I/O
+	page
+
+/ Read next character to AC.
+/ AC undefined on entry
+rdchar:	0
+	ksf		/ character ready to read?
+	jmp .-1		/ no, keep trying
+	krb		/ yes, read it
+	jmp i rdchar
+
+/ Write character in AC, preserve AC
+wrchar:	0
+	tsf		/ printer ready?
+	jmp .-1		/ no, keep waiting
+	tls		/ yes, send character to printer
+	jmp i wrchar
+
+/ Write 6-bit ASCII from low 6 bits of AC, clear AC, skip if character not null
+w6,	0
+	and (77
+	sna
+	jmp i w6
+	isz w6
+
+	tad (40
+	and (77
+	tad (240
+	jms wrchar
+
+	cla
+	jmp i w6
+
+/ Write 6-bit ASCII string, 0-terminated, address in AC
+wrstr6:	0
+	dca addr
+
+ws61,	tad i addr
+	rtr; rtr; rtr
+	jms w6
+	jmp i wrstr6
+
+	tad i addr
+	jms w6
+	jmp i wrstr6
+	isz addr
+	jmp ws61
+
+addr,	0
+
+/ Write 8-bit ASCII string, 0-terminated, address in AC
+wrstr8:	0
+	dca addr
+
+ws81,	tad i addr
+	sna
+	jmp i wrstr8
+	jms wrchar
+	cla
+	isz addr
+	jmp ws81
+
+
+/ Write newline (CR LF)
+wrnl:	0
+	tad (215
+	jms wrchar
+	tad (212 - 215
+	jms wrchar
+	cla
+	jmp i wrnl
+
+/ Write decimal number in AC, number of columns following jms
+wrdec:	0
+	mql		/ number in MA for divide
+	tad i wrdec	/ fetch field size
+	isz wrdec
+	cia
+	dca pad		/ -field size to pad counter
+	tad (buf+4	/ initialize buffer address
+	dca addr
+	
+/ Get characters in reverse order, put in buffer
+wrd1,	sta
+	tad addr
+	dca addr
+	dvi; 10d
+	tad ("0
+	dca i addr
+	isz pad
+	nop
+	mqa
+	sza cla
+	jmp wrd1
+
+/ Write padding
+	tad pad
+	sma cla
+	jmp wrd2
+	tad (" 
+wrd3,	jms wrchar
+	isz pad
+	jmp wrd3
+
+/ Write digits
+wrd2,	cla
+	tad addr
+	jms wrstr8
+
+	jmp i wrdec
+
+pad, 	0
+buf,	zblock 5

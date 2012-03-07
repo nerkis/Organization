@@ -1,0 +1,65 @@
+/ *********************************
+/ *                               *
+/ *  Compute e to High Precision  *
+/ *                               *
+/ *********************************
+/
+/     1 + n + n(n-1) + n(n-1)(n-2) + n(n-1)(n-2)(n-3) + ... + n!
+/ e = ----------------------------------------------------------
+/                             n!
+/
+/ Compute the numerator and denominator of the above ratio and print the
+/ ratio in decimal.
+
+/ For the following constants: We want 128 digits, which is 425.2 bits, or
+/ 35.4 words. So make it 36 words, 432 bits. 85! is about 2.8e128, 426.7 bits,
+/ slightly above the precision we need.
+bigWords=  36d			/ size of bignum
+terms=	   85d			/ number of series terms (n)
+digits=	  128d			/ number of digits
+
+	page
+e:	tls
+
+top,	sta1			/ allocate series sum
+	jms	bigpush
+	dca	sum
+	sta1			/ initialize to 1
+	jms	bigset; sum
+
+	sta2			/ allocate term, which will be added to sum in
+	jms	bigpush		/ the loop and will end at n!
+	dca	term		/ need double bignum to hold product
+	sta1			/ initialize to 1
+	jms	bigset; term
+
+	sta1			/ allocate factor, which counts down from n
+	jms	bigpush		/ to 0 and is multiplied by term and also
+	dca	factor		/ a loop counter
+	tad	(terms		/ initialize to n
+	jms	bigset; factor
+
+/ series loop
+loop,	jms	bigmul; term; factor; term	/ next term
+	jms	bigadd; term; sum; sum		/ add to sum
+	hlt			/ halt on overflow
+	sta			/ decrement factor, just low word since high
+	tad i	factor		/ words are zero
+	sna			/ done?
+	jmp	done
+	dca i	factor		/ no, keep going
+	jmp	loop
+
+done,	sta1			/ done computing numerator (sum) and denominator
+	jms	bigpop		/ (term), no longer need factor so pop it
+
+	jms	ratPrint; sum; term; (digits	/ print ratio
+
+	sta3			/ pop sum and term
+	jms	bigpop
+	hlt			/ all done
+	jmp	top		/ continue switch pressed, do it again
+
+sum,	0
+term,	0
+factor,	0

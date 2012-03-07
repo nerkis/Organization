@@ -1,0 +1,62 @@
+/ *********************
+/ *                   *
+/ *  Bignum Multiply  *
+/ *                   *
+/ *********************
+
+	page
+/ Signed multiply of bigWords source operands to 2*bigWords destination.
+/ No restrictions on operand overlap
+/	jms bigmul
+/	-> -> sourceA
+/	-> -> sourceB
+/	-> -> destination	/ 2*bigWords
+
+bigmul:	0
+	jms	fetchArgs; 3; bigmul; srcA
+
+/ Allocate and zero product
+	sta2
+	jms	bigpush
+	dca	prod
+	jms	bigset2; prod
+
+/ Do the work
+	jms	multiply
+
+/ return product
+	jms	bigcopy2; prod; dst
+
+	sta2
+	jms	bigpop
+
+	jmp i	bigmul
+
+srcA,	0	/ ->sourceA
+srcB,	0	/ ->sourceB
+dst,	0	/ ->destination
+prod,	0	/ ->product on stack
+
+/ ************************************************************
+/ Replace this with your multiply routine. On entry, the above
+/ srcA and srcB point to the source operands, each bigWords
+/ long. Put your result in the 2*bigWords pointed to by prod.
+/ Note that for calculating e, unsigned multiply is fine.
+/ My version is signed; see if you can do that too.
+/ Note that this machine language only works at one particular
+/ offset on the current page, so don't change anything above
+/ if you want it to work.
+	*.+7 & 7770	/ you don't need this in your version
+multiply,
+	0000; 1327; 3335; 1222; 3332; 1224; 3334; 1732
+	2332; 7450; 5275; 3256; 1327; 3336; 1221; 3331
+	1334; 3333; 3337; 1731; 2331; 7425; 0000; 7521
+	1733; 3733; 2333; 7501; 7430; 7101; 1733; 1337
+	3733; 7004; 3337; 2336; 5253; 2334; 2335; 5237
+	7240; 1331; 3331; 1731; 7700; 5313; 4730; 1134
+	1022; 1134; 7000; 7240; 1332; 3332; 1732; 7700
+	5326; 4730; 1134; 1021; 1134; 7000
+	jmp i	multiply
+	-bigWords
+	bigsub
+/ ************************************************************
