@@ -1,0 +1,188 @@
+/ ******************
+/ *                *
+/ *  Ring Buffers  *
+/ *                *
+/ ******************
+
+	page
+/ A ring buffer is a structure with these words in this order:
+/
+readP,	0		/ address of next word to read
+writeP,	0		/ address of next word to write
+count,	0		/ number of words in ring, 0 <= count <= size
+size,	0		/ size of ring in words
+ringStruct=.-readP	/ size of ring structure
+ring,	0		/ the buffer itself starts here
+
+ringEnd,0	/ - address of end of ring, for pointer wrap-around
+data,	0	/ word being read or written
+
+/ **************
+/ *            *
+/ *  Get Ring  *
+/ *            *
+/ **************
+
+/ All ring routines take an argument following the jms that is the address
+/ of the ring. A ring routine calls this to fetch its argument, update its
+/ return address, and copy the ring data to the above variables. On entry,
+/ the AC holds the address of the caller's return address.
+getRing,0
+	dca	ring			/ ring -> caller's return address
+	tad i	ring			/ get caller's return address
+	isz i	ring			/ update caller's return address
+	dca	ring			/ ring -> caller's argument
+	tad i	ring			/ ring -> ring buffer
+	dca	ring
+
+	tad i	ring			/ get read pointer
+	dca	readP
+	isz	ring
+
+	tad i	ring			/ get write pointer
+	dca	writeP
+	isz	ring
+
+	tad i	ring			/ get count
+	dca	count
+	isz	ring
+
+	tad i	ring			/ get size
+	dca	size
+	isz	ring			/ now ring -> buffer itself
+
+	tad	ring			/ get -address of end of ring for
+	tad	size			/ pointer updates
+	cia
+	dca	ringEnd
+
+	jmp i	getRing
+
+/ **************
+/ *            *
+/ *  Put Ring  *
+/ *            *
+/ **************
+
+/ Copy back the variables to the ring.
+putRing,0
+	tad	ring			/ back up ring to copy back the variables
+	tad	(-ringStruct
+	dca	ring
+
+	tad	readP			/ put back the read pointer
+	dca i	ring
+	isz	ring
+
+	tad	writeP			/ put back the write pointer
+	dca i	ring
+	isz	ring
+
+	tad	count			/ put back the count
+	dca i	ring
+
+	jmp i	putRing
+
+/ *********************
+/ *                   *
+/ *  Initialize Ring  *
+/ *                   *
+/ *********************
+
+/ Initialize a ring buffer. Size in AC on entry.
+/	jms initRing; ringAddress
+initRing:
+	0
+	dca	size
+
+	tad i	initRing
+	dca	ring
+	isz	initRing
+
+	tad	ring
+	tad	(ringStruct
+	dca i	ring
+
+	tad i	ring
+	isz	ring
+	dca i	ring
+	isz	ring
+	dca i	ring
+	isz	ring
+	tad	size
+	dca i	ring
+
+	jmp i	initRing
+
+/ ***************
+/ *             *
+/ *  Read Ring  *
+/ *             *
+/ ***************
+
+/ Read word from ring buffer to AC, skip if one was read (buffer
+/ wasn't empty).
+/	jms readRing; ringAddress
+readRing:
+	0
+	tad	(readRing
+	jms	getRing
+	
+	tad	count			/ buffer empty?
+	sna
+	jmp i	readRing		/ yes, non-skip return
+
+	tad	(-1			/ decrement count
+	dca	count
+
+	tad i	readP			/ get data
+	dca	data
+
+	isz	readP			/ update read pointer
+	tad	readP			/ read pointer wrap-around?
+	tad	ringEnd
+	sza cla
+	jmp	read1
+	tad	ring			/ yes, do it
+	dca	readP
+
+read1,	jms	putRing			/ copy back
+	tad	data			/ return data in AC
+	isz	readRing		/ skip return
+	jmp i	readRing
+
+/ ****************
+/ *              *
+/ *  Write Ring  *
+/ *              *
+/ ****************
+
+/ Write AC to ring buffer, skip if word was written (buffer wasn't full)
+/	jms writeRing; ringAddress
+writeRing:
+	0
+	dca	data
+	tad	(writeRing
+	jms	getRing
+
+	tad	count			/ ring full?
+	cia
+	tad	size
+	sna cla
+	jmp i	writeRing		/ yes, non-skip return
+
+	isz	count			/ update count
+	tad	data			/ put data in ring
+	dca i	writeP
+
+	isz	writeP			/ update write pointer
+	tad	writeP			/ write pointer wrap-around?
+	tad	ringEnd
+	sza cla
+	jmp	write1
+	tad	ring			/ yes, do it
+	dca	writeP
+
+write1,	jms	putRing			/ copy back
+	isz	writeRing		/ skip return
+	jmp i	writeRing

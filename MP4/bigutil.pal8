@@ -1,0 +1,212 @@
+/ **********************
+/ *                    *
+/ *  Bignum Utilities  *
+/ *                    *
+/ **********************
+
+/ A "bignum" is a signed integer consisting of a predefined number of consecutive
+/ words in memory, stored from LSW to MSW. The number of words is defined by the
+/ constant bigWords, which is defined outside this module to allow different
+/ programs that use this code to choose appropriate values.
+
+/ Set AC to a small constant
+sta1=	cla iac			/ 1
+sta2=	cla cll iac ral		/ 2
+sta3=	cla stl iac ral		/ 3
+sta4=	cla cll iac rtl		/ 4
+
+	page
+
+/ *********************
+/ *                   *
+/ *  Fetch Arguments  *
+/ *                   *
+/ *********************
+/
+/ For the bignum system, arguments follow the jms. Each argument is the address
+/ of a variable (memory location) that holds the address of a bignum, so there
+/ is an extra level of indirection. This avoids a lot of awkward self-modifying
+/ code when a bignum subroutine, e.g. bigdiv, needs to call another bignum
+/ subroutine. The following subroutine handles all the details of argument
+/ fetching. Look around for examples of use.
+
+/ Fetch zero or more arguments that have been passed to the caller's subroutine
+/	jms	fetchArgs
+/	count (0 means 0)
+/	-> caller's subroutine return address
+/	-> locations to store arguments
+
+fetchArgs:
+	0
+	tad i	fetchArgs
+	cma			/ arg count for isz, allowing 0
+	dca	argCount
+	isz	fetchArgs
+
+	tad i	fetchArgs	/ get address of address of args
+	dca	ppargs
+	tad i	ppargs		/ get address of args
+	dca	pargs
+	isz	fetchArgs
+
+	tad i	fetchArgs	/ get address of where to put args
+	dca	pdst
+	isz	fetchArgs
+
+/ Loop
+	jmp	fa2		/ this handles 0 args
+fa1,	tad i	pargs		/ fetch next arg
+	dca	parg
+	tad i	parg		/ extra level of indirection
+	dca i	pdst		/ store argument
+	isz	pargs
+	isz	pdst		/ update pointers
+fa2,	isz	argCount
+	jmp	fa1
+
+	tad	pargs		/ update caller's return address
+	dca i	ppargs
+
+	jmp i	fetchArgs
+
+argCount,
+	0
+ppargs,	0	/ -> caller's return address
+pargs,	0	/ -> argument list
+pdst,	0	/ -> where caller wants args stores
+parg,	0	/ for extra level of indirection
+
+/ **********
+/ *        *
+/ *  Push  *
+/ *        *
+/ **********
+
+/ Push n * bigWords onto stack, n in AC, return address in AC. Here push
+/ just means allocate, not initialize in any way. Halt on stack overflow.
+
+bigSPTop=	7600		/ top of stack; 0 means 10000
+bigSPBot=	4000		/ bottom of stack; 0 means 0
+bigSP,		bigSPTop	/ stack pointer, grows to lower addresses
+
+bigPush:0
+	mql muy; bigWords	/ get number of words needed
+	sza
+	hlt			/ stack overflow, >4095 words requested
+
+	cla mqa			/ subtract from stack pointer
+	cll
+	cia
+	tad	bigSP
+	snl
+	hlt			/ stack overflow, SP would wrap around
+	dca	bigSP
+
+	cll			/ one more check for overflow
+	tad	bigSP
+	tad	(-bigSPBot
+	snl sza cla
+	hlt			/ stack overflow
+
+	tad	bigSP		/ return allocated bignums
+	jmp i	bigPush
+
+/ *********
+/ *       *
+/ *  Pop  *
+/ *       *
+/ *********
+
+/ Pop n * bigWords from stack, n in AC.
+bigPop:	0
+	mql muy; bigWords	/ get number of words no longer needed
+	sza
+	hlt			/ stack underflow, >4095 words requested
+
+	cla mqa			/ add to stack pointer
+	cll
+	tad	bigSP
+	szl; sna; skp
+	hlt			/ stack underflow, SP would wrap around
+	dca	bigSP
+
+	cll			/ one more check for underflow
+	tad	bigSP
+	tad	(-bigSPTop
+	szl; sna cla; skp cla
+	hlt			/ stack underflow
+	jmp i	bigPop
+
+/ *******************************
+/ *                             *
+/ *  Set Bignum to Value in AC  *
+/ *                             *
+/ *******************************
+
+/	jms bigset
+/	-> -> destination
+
+/ Double-precision version
+bigset2:0
+	dca	value
+	tad	bigset2
+	dca	bigset
+	tad	[-bigWords
+	jmp	set2
+
+/ Single-precision version
+bigset:	0
+	dca	value
+set2,	tad	[-bigWords
+	dca	count
+
+	jms	fetchArgs; 1; bigset; p1
+
+	tad	value		/ LSW gets the value
+set1,	dca i	p1		/ other words get 0
+	isz	p1
+	isz	count
+	jmp	set1
+
+	jmp i	bigset
+
+value,	0
+count,	0
+p1,	0
+p2,	0
+
+/ ******************
+/ *                *
+/ *  Copy Bignums  *
+/ *                *
+/ *****************
+
+/	jms bigcopy
+/	-> -> src
+/	-> -> dst
+
+/ Double-precision version
+bigcopy2:
+	0
+	tad	bigcopy2
+	dca	bigcopy
+	tad	[-bigWords
+	jmp	copy2
+
+/ Single-precision version
+bigcopy:
+	0
+copy2,	tad	[-bigWords
+	dca	count
+
+	jms	fetchArgs; 2; bigcopy; p1
+
+copy1,	tad i	p1
+	dca i	p2
+	isz	p1/ Single-precision version
+
+	isz	p2
+	isz	count
+	jmp	copy1
+
+	jmp i	bigcopy

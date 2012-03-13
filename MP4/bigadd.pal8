@@ -1,0 +1,196 @@
+/ **************************************
+/ *                                    *
+/ *  Bignum Add, Subtract, and Negate  *
+/ *                                    *
+/ **************************************
+/
+	page
+
+/ *********
+/ *       *
+/ *  Add  *
+/ *       *
+/ *********
+
+/ Signed addition. The source and destination operands can be identical or distinct,
+/ but they cannot partially overlap.
+/	jms bigadd
+/	-> -> sourceA
+/	-> -> sourceB
+/	-> -> destination
+/	skip if no overflow
+
+/ Double-precision add
+bigadd2:0
+	tad	bigadd2
+	dca	bigadd
+	tad	[-bigWords
+	jmp	bigadd+1
+
+/ Single-precision add
+bigadd:	0
+	tad 	[-bigWords	/ init counter
+	dca 	count
+
+	jms	fetchArgs; 3; bigadd; srcA
+
+/ Loop from LSW to one word before MSW, with L holding the carry.
+	cll			/ initial carry in is 0
+	jmp	add2		/ loop one less than the count
+add1,	ral			/ AC = carry in, L = 0
+	tad i	srcA		/ do the add
+	tad i	srcB
+	dca i	dst		/ store result
+	isz	srcA		/ increment all pointers
+	isz	srcB
+	isz	dst
+add2,	isz	count		/ loop control
+	jmp	add1
+
+/ Now do the MSW. This is like an iteration of the above loop, but we don't
+/ increment the pointers, so the overflow code can get at the sign bits.
+/ Also, we save the MSW of the result in a temporary location, so that
+/ we don't overwrite source MSW in case one or both of the sources is
+/ identical to the destination. When overflow detection is done, then we
+/ write the destination MSW.
+	ral
+	tad i	srcA		/ do the add
+	tad i	srcB
+	dca	tempD		/ save MSW of dest, don't overwrite it yet	
+
+/ Detect overflow and return. The result is an overflow if the XOR of the
+/ source and destination sign bits and the carry out bit (currently in L)
+/ is 1. Total of 4 bits being XORd. Here is why: 
+/
+/	- If both source operands are positive (sign bits 0), there cannot
+/	  be a carry out so L = 0. If the destination is negative, the XOR
+/	  of the 4 bits is 1 and it's an overflow.
+/	- If both source operands are negative, there must be a carry out
+/	  (L = 1). If the destination is positive, the XOR is 1 and it's
+/	  an overflow.
+/	- If one source is positive and one negative, there cannot be an
+/	  overflow. If the destination is positive, the must have been a
+/	  carry out (L = 1) so the XOR must be 0. If the destination is
+/	  negative there must not have been a carry out (L = 0) so the
+/	  XOR mst be 0.
+/
+/ We are going to form the XOR in AC0 by adding just the sign bits, setting
+/ the rest of AC to 0 so there is no carry into AC0.
+	rar			/ carry out -> AC0
+	dca	carry		/ save carry out so we can return it in L
+	tad	carry
+	tad i	srcA		/ XOR sourceA sign bit
+	and	(4000		/ XOR sourceB sign bit
+	tad i	srcB
+	and	(4000		/ XOR destination sign bit
+	tad	tempD
+	sma cla			/ skip on overflow and clear AC
+	isz	bigadd		/ no overflow, skip return
+	tad	tempD
+	dca i	dst
+	tad	carry
+	cll ral
+	jmp i	bigadd
+
+srcA,	0
+srcB,	0
+dst,	0
+carry,		/ share with count
+count,	0
+tempD,	0
+
+/ *******************
+/ *                 *
+/ *  Bignum Negate  *
+/ *                 *
+/ *******************
+
+/ 2's complement negate. The source and destination operands can be identical or distinct,
+/ but they cannot partially overlap.
+/	jms bigneg
+/	-> -> source
+/	-> -> destination
+/	skip if no overflow
+bigneg:	0
+	jms	fetchArgs; 2; bigneg; srcA
+
+	tad 	[-bigWords	/ init counter
+	dca 	count
+
+/ Complement and increment, carry in L
+	stl			/ start with carry = 1 to do the increment
+	jmp	neg2
+neg1,	tad i	srcA
+	cma			/ complement
+	szl			/ and increment if there is a carry in
+	cll iac
+	dca i	srcB
+	isz	srcA		/ update pointers
+	isz	srcB
+neg2,	isz	count		/ loop control
+	jmp	neg1
+
+/ Final iteration
+	tad i	srcA
+	cma
+	szl
+	cll iac
+	dca	tempD
+
+/ Detect overflow. Twos complement negate overflows if the result is the
+/ most negative number, i.e. 4000 0000 0000 ... or, equivalently, if both
+/ the source and destination are negative.
+	cll
+	tad i	srcA
+	and	(4000
+	tad	tempD
+	szl cla
+	isz	bigneg
+	tad	tempD
+	dca i	srcB
+	jmp i	bigneg
+
+/ *********************
+/ *                   *
+/ *  Bignum Subtract  *
+/ *                   *
+/ *********************
+
+/ 2's complement subtract. The source and destination operands can be identical or distinct,
+/ but they cannot partially overlap.
+/	jms bigsub
+/	-> -> posSource
+/	-> -> negSource
+/	-> -> destination
+/	skip if no overflow
+
+bigsub:	0
+	jms	fetchArgs; 3; bigsub; posOpr
+
+	sta1			/ allocate temp bignum on stack
+	jms	bigpush
+	dca	tmpOpr
+
+	dca	subOvf
+
+/ negate and add
+	jms	bigneg; negOpr; tmpOpr
+	isz	subOvf
+	jms	bigadd; posOpr; tmpOpr; dstOpr
+	isz	subOvf
+
+	sta1
+	jms	bigpop
+
+/ Overflow if the add or negate overflowed, but not both
+	tad	subOvf
+	rar
+	snl cla
+	isz	bigsub
+	jmp i	bigsub
+
+posOpr,	0
+negOpr,	0
+dstOpr,	0
+tmpOpr,	0
+subOvf,	0

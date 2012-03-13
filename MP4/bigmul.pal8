@@ -1,0 +1,111 @@
+/ *********************
+/ *                   *
+/ *  Bignum Multiply  *
+/ *                   *
+/ *********************
+
+	page
+/ Signed multiply of bigWords source operands to 2*bigWords destination.
+/ No restrictions on operand overlap
+/	jms bigmul
+/	-> -> sourceA
+/	-> -> sourceB
+/	-> -> destination	/ 2*bigWords
+
+bigmul:	0
+	jms	fetchArgs; 3; bigmul; srcA
+
+/ Allocate and zero product
+	sta2
+	jms	bigpush
+	dca	prod
+	jms	bigset2; prod
+
+/ Initialize for outer loop, which loops over srcB words, LSW to MSW, multiplying
+/ each srcB word by all of srcA and adding the result to the partial sum in prod.
+	tad	[-bigWords	/ outer loop counter
+	dca	count1
+	tad	srcB		/ outer loop pointer
+	dca	psrcB
+	tad	prod
+	dca	qdst
+
+/ Outer loop. Initialize for inner loop, which multiplies pairs of words and
+/ adds the 24-bit sum to prod.
+mul1,	tad i	psrcB		/ srcB word to use, put in MUY instruction
+	isz	psrcB		/ next srcB word
+	sna
+	jmp	mul5
+	dca	bword
+	tad	[-bigWords	/ inner loop counter
+	dca	count2
+	tad	srcA		/ inner loop srcA pointer
+	dca	psrcA
+	tad	qdst		/ inner loop dst pointer
+	dca	pdst
+	dca	carry		/ initial carry is 0
+
+/ Inner loop
+mul2,	tad i	psrcA		/ fetch and multiply next srcA word
+	isz	psrcA
+	mql muy
+bword,	0
+	swp			/ LSW of product -> AC, MSW -> MQ
+	tad i	pdst		/ add LSW to dst
+	dca i	pdst
+	isz	pdst		/ next dst word
+	mqa			/ get MSW or product
+	szl			/ handle carry from LSW add
+	cll iac
+	tad i	pdst		/ add MSW to dst, including carry from
+	tad	carry		/ previous iteration
+	dca i	pdst
+	ral			/ save carry for next iteration
+	dca	carry
+	isz	count2		/ inner loop count
+	jmp	mul2
+
+mul5,	isz	qdst		/ outer loop update dst starting address
+	isz	count1		/ outer loop count
+	jmp	mul1
+
+/ Fix product for signed multiply using congruence formula.
+/ If srcA is negative, subtract srcB from high bigWords words of dst
+	sta
+	tad	psrcA
+	dca	psrcA
+	tad i	psrcA
+	sma cla
+	jmp	mul3
+	jms	bigsub; qdst; srcB; qdst
+	nop
+
+/ If srcB is negative, subtract srcA from high bigWords words of dst
+mul3,	sta
+	tad	psrcB
+	dca	psrcB
+	tad i	psrcB
+	sma cla
+	jmp	mul4
+	jms	bigsub; qdst; srcA; qdst
+	nop
+
+/ return product
+mul4,	jms	bigcopy2; prod; dst
+
+	sta2
+	jms	bigpop
+
+	jmp i	bigmul
+
+srcA,	0	/ ->sourceA
+srcB,	0	/ ->sourceB
+dst,	0	/ ->destination
+prod,	0	/ ->product on stack
+psrcA,	0	/ ->sourceA, updated in loops
+psrcB,	0	/ ->sourceB, updated in loops
+pdst,	0	/ ->product, updated in inner loop
+qdst,	0	/ ->product, updated in outer loop
+count1,	0	/ outer loop counter
+count2,	0	/ inner loop counter
+carry,	0	/ carry from one iteration to the next

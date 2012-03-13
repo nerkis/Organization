@@ -1,0 +1,28 @@
+/ ****************************
+/ *                          *
+/ *  Page 0 With Interrupts  *
+/ *                          *
+/ ****************************
+
+/ Priority interrupt instructions
+pirm=	6301	/ interrupt mask -> AC
+piwm=	6302	/ AC -> interrupt mask, 0 -> AC
+pirc=	6303	/ highest priority interrupting channel number -> AC
+
+/ Priority interrupt channel masks
+ckMask=	0002	/ 1: KW8IF clock
+rfMask=	0010	/ 3: RF08 disc
+kbMask=	0040	/ 5: ASR33 keyboard
+ptMask=	0200	/ 7: ASR33 printer
+
+/ Interrupt entry point
+	*1
+	jmp	intHandle
+
+	*20
+/ 24-bit clock, updated by clock interrupt
+clkLo:	0
+clkHi:	0
+
+/ Printer active flag (0 not active, 1 active)
+ptAct:	0

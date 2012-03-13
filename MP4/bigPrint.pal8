@@ -1,0 +1,204 @@
+/ ******************
+/ *                *
+/ *  Print Bignum  *
+/ *                *
+/ ******************
+
+	page
+
+/ Address of number to print in AC
+
+bigPrint:
+	0
+	dca	pnum
+
+/ Allocate a bignum to hold a reversed copy of the number to be printed, and
+/ a double bignum to hold triplets.
+	sta3
+	jms	bigpush
+	dca	rev
+	tad	rev
+	tad	(bigWords
+	dca	trips
+
+/ Copy number to prev in reverse order
+	tad	trips		/ happens to be at the end of rev
+	dca	prev
+	tad	[-bigWords
+	dca	count
+bp1,	sta
+	tad	prev
+	dca	prev
+	tad i	pnum
+	dca i	prev
+	isz	pnum
+	isz	count
+	jmp	bp1
+	
+/ Divide the number by 1000 repeatedly until the quotient becomes 0. The
+/ sequence of remainders is a sequence of values in the range 0 - 999, which
+/ is in effect a sequence of triplets of decimal digits.
+	tad	trips
+	dca	p3
+
+/ Beginning of one divide by 1000 iteration. Skip over all of the 0s in
+/ the number. If all of the words are zero, we're done with this phase.
+bp2,	tad	[-bigWords
+	dca	count
+	tad	rev
+	dca	prev
+
+/ This is the skip over zeros loop
+	mql
+bp3,	tad i	prev
+	sza
+	jmp	bp5		/ found a non-zero word, start dividing
+	isz	prev
+	isz	count
+	jmp	bp3
+	jmp	bp6		/ all words are zero
+
+/ This is the divide loop
+bp4,	tad i	prev
+bp5,	swp dvi; 1000d
+	swp
+	dca i	prev
+	isz	prev
+	isz	count
+	jmp	bp4
+
+/ done with one divide by 1000, store remander
+	mqa
+	dca i	p3
+	isz	p3
+	jmp	bp2
+
+/ Done converting the number to decimal triplets, start printing
+	dca	count		/ clear count for the digit subroutine
+bp6,	sta			/ decrement triplet pointer
+	tad	p3
+	dca	p3
+	tad i	p3		/ get next triplet
+	mql dvi; 100d		/ get and print 3 digits
+	swp
+	jms	digit
+	dvi; 10d
+	swp
+	jms	digit
+	mqa
+	jms	digit
+
+	tad	p3		/ done when triplet pointer gets back to
+	cia			/ beginning
+	tad	trips
+	sza cla
+	jmp	bp6
+
+	sta3			/ pop the temp bignums
+	jms	bigpop
+
+	jmp i	bigPrint
+
+/ Print one digit, value 0 - 9 in AC. Leading zeros are not printed. A
+/ newline is inserted after each 70 characters.
+digit,	0
+	dca	dig
+	tad	count
+	sza cla
+	jmp	past0s
+	tad	dig		/ more leading zeros?
+	sna cla
+	jmp i	digit		/ yes, don't print them
+	jmp	first		/ first non-zero digit
+
+past0s,	isz	count		/ enough digits already on this line?
+	jmp	doit
+	jms	wrnl		/ yes, write newline
+first,	tad	(-70d
+	dca	count
+doit,	tad	dig
+	tad	("0
+	jms	wrchar
+	cla
+	jmp i	digit
+
+dig,				/ digit to print
+pnum,	0			/ -> number to print, updated in loop
+trips,	0			/ -> array of triplets
+p3,	0			/ -> triplets, updated in loops
+rev,	0			/ -> number in reverse order
+prev,	0			/ -> number in reverse order, updated in loops
+count,	0
+
+/ ****************************
+/ *                          *
+/ *  Print Ratio of Bignums  *
+/ *                          *
+/ ****************************
+
+	page
+
+/	jms ratPrint
+/	-> -> numerator
+/	-> -> denominator
+/	-> number of digits
+
+ratPrint:
+	0
+
+	jms	fetchArgs; 3; ratPrint; num
+
+/ Allocate a double bignum, initialized to 1, that will become
+/ 10^digits
+	sta2
+	jms	bigpush
+	dca	tens
+	sta1
+	jms	bigset; tens
+
+/ Allocate a double bignum, initialized to 10, that will be
+/ squared in each iteration of loop that computes 10^digits,
+/ so that 10^digits can be computed in log(digits) steps.
+	sta2
+	jms	bigpush
+	dca	tensq
+	tad	(10d
+	jms	bigset; tensq
+
+/ Compute 10^digits
+rp1,	tad	digits		/ get current digits value
+	sna			/ zero (done)?
+	jmp	rp3
+	cll rar			/ no, get LSB
+	dca	digits		/ update digits value
+	snl			/ LSB set?
+	jmp	rp2
+				/ yes
+	jms	bigmul; tensq; tens; tens
+				/ square tensq
+rp2,	jms	bigmul; tensq; tensq; tensq
+	jmp	rp1
+
+/ done computing 10^digits
+rp3,	sta2			/ no longer need tensq
+	jms	bigpop
+
+/ Print 10^digits * numerator / denominator
+	jms	bigmul; num; tens; tens
+	jms	bigdiv; tens; denom
+	hlt
+
+	tad	tens
+	jms	bigPrint
+	jms	wrnl		/ add a newline at the end
+
+	sta2			/ pop 10^digits
+	jms	bigpop
+
+	jmp i	ratPrint
+
+num,	0	/ -> numerator
+denom,	0	/ -> denominator
+digits,	0	/ digits value
+tens,	0	/ -> 10^digits, on stack
+tensq,	0	/ -> squaring value
